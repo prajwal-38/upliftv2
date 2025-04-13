@@ -68,27 +68,29 @@ def run_simulator():
         explainer = shap.TreeExplainer(treated_model)
         shap_values = explainer.shap_values(user_df)
         
-
+        #For classification models, we want the positive class
         if isinstance(shap_values, list):
             shap_values = shap_values[1]
-
+        
+        # Create SHAP force plot - FIXED VERSION
         st.write("SHAP Force Plot (Treatment Model)")
         
-        fig, ax = plt.subplots(figsize=(10, 4))
-        shap.force_plot(explainer.expected_value, 
-                        shap_values, 
-                        user_df,
-                        feature_names=feature_cols,
-                        matplotlib=True,
-                        show=False,
-                        ax=ax)
+        plt.figure(figsize=(10, 4))
+        shap.plots.force(
+            explainer.expected_value, 
+            shap_values[0], 
+            user_df.iloc[0],
+            feature_names=feature_cols,
+            matplotlib=True
+        )
         
         plt.tight_layout()
-        st.pyplot(fig)
-        plt.close(fig) 
+        st.pyplot(plt.gcf()) 
+        plt.close()
     except Exception as e:
         st.warning(f"Could not generate SHAP explanation: {str(e)}")
         st.info("Feature importance visualization is not available, but the model predictions are still valid.")
+    
     
     st.header("Recommendation")
     if uplift > 0.01:  #1% uplift threshold
