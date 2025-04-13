@@ -1,0 +1,12 @@
+streamlit==1.44.0
+pandas
+numpy
+matplotlib
+seaborn
+joblib==1.4.2
+scikit-learn==1.6.1
+lightgbm==4.6.0
+Flask==3.1.0
+gunicorn==20.1.0
+shap==0.47.1
+causalml==0.15.3
