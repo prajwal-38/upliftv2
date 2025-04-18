@@ -120,3 +120,4 @@ The project includes configuration for deployment on Render:
 - Scikit-learn : For preprocessing and evaluation
 ## License
 MIT
+Just YOLO-ing 🫡
