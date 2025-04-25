@@ -64,29 +64,68 @@ def run_simulator():
 
 
     try:
-        st.header("Feature Importance")
-        explainer = shap.TreeExplainer(treated_model)
-        shap_values = explainer.shap_values(user_df)
+        st.header("Feature Contribution to Uplift (SHAP)")
         
-        #For classification models, we want the positive class
-        if isinstance(shap_values, list):
-            shap_values = shap_values[1]
+        # Explain both models
+        treated_explainer = shap.TreeExplainer(treated_model)
+        control_explainer = shap.TreeExplainer(control_model)
         
-        # Create SHAP force plot - FIXED VERSION
-        st.write("SHAP Force Plot (Treatment Model)")
+        treated_shap_values = treated_explainer.shap_values(user_df)
+        control_shap_values = control_explainer.shap_values(user_df)
         
+        # For classification, get SHAP for the positive class (class 1)
+        if isinstance(treated_shap_values, list):
+            treated_shap_values = treated_shap_values[1]
+        if isinstance(control_shap_values, list):
+            control_shap_values = control_shap_values[1]
+            
+        # Calculate Uplift SHAP for the single user instance
+        # uplift_shap = treated_shap - control_shap
+        # Expected value for uplift: E[treatment_pred] - E[control_pred]
+        # Note: SHAP library's force plot needs a single expected value.
+        # Calculating a direct uplift force plot is complex as it involves two models.
+        # A common workaround is to show the treatment model's explanation,
+        # as it often drives the decision, but acknowledge it's not direct uplift explanation.
+        # OR we can plot the difference in SHAP values as a bar chart.
+
+        # Option 1: Show Treatment Force Plot (as before, but clarify)
+        st.write("SHAP Force Plot (Explaining Treatment Model Prediction)")
+        st.caption("This plot shows factors driving the prediction *if treated*. It doesn't directly show uplift contribution.")
         plt.figure(figsize=(10, 4))
+        # Use expected_value[1] if it's a list (for multi-class)
+        expected_value_treatment = treated_explainer.expected_value[1] if isinstance(treated_explainer.expected_value, (list, np.ndarray)) else treated_explainer.expected_value
         shap.plots.force(
-            explainer.expected_value, 
-            shap_values[0], 
+            expected_value_treatment, 
+            treated_shap_values[0], # SHAP values for the first (and only) user
             user_df.iloc[0],
             feature_names=feature_cols,
-            matplotlib=True
+            matplotlib=True,
+            show=False # Prevent double plotting
         )
-        
         plt.tight_layout()
-        st.pyplot(plt.gcf()) 
+        st.pyplot(plt.gcf())
         plt.close()
+
+        # Option 2: Show Uplift SHAP Bar Plot (More direct for uplift)
+        st.write("Feature Contribution to Uplift Score")
+        uplift_shap_values = treated_shap_values[0] - control_shap_values[0]
+        uplift_shap_df = pd.DataFrame({
+            'feature': feature_cols,
+            'uplift_shap': uplift_shap_values
+        }).sort_values(by='uplift_shap', key=abs, ascending=False).head(15) # Show top 15
+
+        plt.figure(figsize=(10, 6))
+        sns.barplot(x='uplift_shap', y='feature', data=uplift_shap_df, palette='viridis')
+        plt.title('Top Features Contributing to Uplift Prediction')
+        plt.xlabel('SHAP Value (Contribution to Uplift)')
+        plt.ylabel('Feature')
+        plt.tight_layout()
+        st.pyplot(plt.gcf())
+        plt.close()
+
+    except Exception as e:
+        st.warning(f"Could not generate SHAP explanation: {str(e)}")
+        st.info("Feature importance visualization is not available, but the model predictions are still valid.")
     except Exception as e:
         st.warning(f"Could not generate SHAP explanation: {str(e)}")
         st.info("Feature importance visualization is not available, but the model predictions are still valid.")

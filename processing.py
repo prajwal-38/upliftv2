@@ -76,6 +76,7 @@ def split_data(df, feature_cols):
     X_train, X_test, y_train, y_test, t_train, t_test = train_test_split(
         X, y, t, test_size=0.2, random_state=42)
     
+    
     X_train, X_val, y_train, y_val, t_train, t_val = train_test_split(
         X_train, y_train, t_train, test_size=0.25, random_state=42)
     
