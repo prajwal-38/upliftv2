@@ -55,15 +55,18 @@ def shap_analysis(two_model, X_train, feature_cols):
         treated_shap = treated_shap[1]
         control_shap = control_shap[1]
     
-    #Calculate uplift SHAP
-    uplift_shap = np.abs(treated_shap - control_shap)
+    #Calculate uplift SHAP (difference, not absolute difference)
+    uplift_shap = treated_shap - control_shap
     
+    #Calculate mean absolute uplift SHAP for feature importance ranking
+    mean_abs_uplift_shap = np.mean(np.abs(uplift_shap), axis=0)
 
     feature_shap_values = pd.DataFrame({
         'Feature': feature_cols,
-        'Uplift_SHAP': np.mean(uplift_shap, axis=0)
-    }).sort_values('Uplift_SHAP', ascending=False)
+        'Mean_Abs_Uplift_SHAP': mean_abs_uplift_shap
+    }).sort_values('Mean_Abs_Uplift_SHAP', ascending=False)
     
+    # Return the raw uplift_shap (not absolute) along with others
     return feature_shap_values, treated_shap, control_shap, uplift_shap, X_sample
 
 def plot_feature_importance(importance_df, title="Feature Importance", top_n=20):
@@ -72,10 +75,12 @@ def plot_feature_importance(importance_df, title="Feature Importance", top_n=20)
     """
     plt.figure(figsize=(12, 8))
     
-    #Get top N features
-    top_features = importance_df.head(top_n)
+    #Get top N features based on absolute importance difference
+    # Reindex ensures we get the rows corresponding to the largest absolute differences
+    top_features = importance_df.reindex(importance_df['Importance_Difference'].abs().sort_values(ascending=False).index).head(top_n)
     
-    sns.barplot(x='Uplift_Importance', y='Feature', data=top_features)
+    # Plotting the actual difference, not absolute
+    sns.barplot(x='Importance_Difference', y='Feature', data=top_features)
     plt.title(title)
     plt.tight_layout()
     
@@ -108,7 +113,7 @@ def save_attribution_results(feature_importance, feature_shap_values, output_dir
     #Save feature importance
     feature_importance.to_csv(f'{output_dir}/feature_importance.csv', index=False)
     
-    #Save SHAP values
+    #Save mean absolute SHAP values for ranking
     feature_shap_values.to_csv(f'{output_dir}/feature_shap_values.csv', index=False)
     
     print(f"Attribution results saved to {output_dir}/")

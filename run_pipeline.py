@@ -3,8 +3,8 @@ import pandas as pd
 import numpy as np
 import joblib
 from processing import load_criteo_data, preprocess_data, split_data, save_preprocessed_data, explore_data
-from uplift_model import train_two_model_approach, train_metalearners, evaluate_models, save_models
-from feature_attribution import analyze_feature_importance, shap_analysis, save_attribution_results
+from uplift_model import train_two_model_approach, train_metalearners, evaluate_models, comprehensive_evaluation, save_models
+from feature_attribution import analyze_feature_importance, shap_analysis, plot_shap_summary, save_attribution_results
 
 def run_pipeline(data_path, output_dir='models', sample_size=1000000, start_step=1):
 
@@ -137,44 +137,72 @@ def run_pipeline(data_path, output_dir='models', sample_size=1000000, start_step
     
     #Step 8: Evaluating models
     if start_step <= 8:
-        print("Step 8: Evaluating models...")
-        results, uplift_scores = evaluate_models(two_model, metalearners, X_val, y_val, t_val)
-        checkpoint_data['evaluation'] = {'results': results, 'uplift_scores': uplift_scores}
+        print("Step 8: Evaluating models using comprehensive metrics...")
+        # Combine models for evaluation
+        all_models_for_eval = {'Two-Model': two_model}
+        all_models_for_eval.update(metalearners)
+        
+        evaluation_metrics = comprehensive_evaluation(all_models_for_eval, X_val, y_val, t_val)
+        checkpoint_data['evaluation'] = {'metrics': evaluation_metrics} # Store the detailed metrics
         joblib.dump(checkpoint_data, checkpoint_file)
         
-        print("Model evaluation results:")
-        for model, score in results.items():
-            print(f"{model}: {score:.4f}")
+        print("Model evaluation metrics:")
+        for model_name, metrics in evaluation_metrics.items():
+            print(f"\n--- {model_name} ---")
+            for metric_name, score in metrics.items():
+                print(f"  {metric_name}: {score:.4f}")
     else:
         print("Step 8: Evaluating models... [SKIPPED]")
         evaluation = checkpoint_data.get('evaluation', {})
-        results = evaluation.get('results')
-        uplift_scores = evaluation.get('uplift_scores')
+        evaluation_metrics = evaluation.get('metrics')
         
-        if results is not None:
-            print("Model evaluation results:")
-            for model, score in results.items():
-                print(f"{model}: {score:.4f}")
+        if evaluation_metrics is not None:
+            print("Model evaluation metrics:")
+            for model_name, metrics in evaluation_metrics.items():
+                print(f"\n--- {model_name} ---")
+                for metric_name, score in metrics.items():
+                    print(f"  {metric_name}: {score:.4f}")
         else:
-            print("Evaluation results not found in checkpoint, reevaluating...")
-            results, uplift_scores = evaluate_models(two_model, metalearners, X_val, y_val, t_val)
-            checkpoint_data['evaluation'] = {'results': results, 'uplift_scores': uplift_scores}
+            print("Evaluation metrics not found in checkpoint, reevaluating...")
+            # Combine models for evaluation
+            all_models_for_eval = {'Two-Model': two_model}
+            all_models_for_eval.update(metalearners)
+            
+            evaluation_metrics = comprehensive_evaluation(all_models_for_eval, X_val, y_val, t_val)
+            checkpoint_data['evaluation'] = {'metrics': evaluation_metrics}
             joblib.dump(checkpoint_data, checkpoint_file)
             
-            print("Model evaluation results:")
-            for model, score in results.items():
-                print(f"{model}: {score:.4f}")
+            print("Model evaluation metrics:")
+            for model_name, metrics in evaluation_metrics.items():
+                print(f"\n--- {model_name} ---")
+                for metric_name, score in metrics.items():
+                    print(f"  {metric_name}: {score:.4f}")
     
     #Step 9: Analyzing feature importance
     if start_step <= 9:
-        print("Step 9: Analyzing feature importance...")
+        print("Step 9: Analyzing feature importance and SHAP...")
         importance_df = analyze_feature_importance(two_model, X_train, feature_cols)
-        feature_shap_values, _, _, _, _ = shap_analysis(two_model, X_train, feature_cols)
+        
+        # Capture all return values from shap_analysis
+        feature_shap_values, treated_shap, control_shap, uplift_shap, X_sample = shap_analysis(two_model, X_train, feature_cols)
+        
         checkpoint_data['feature_importance'] = {
             'importance_df': importance_df,
-            'feature_shap_values': feature_shap_values
+            'feature_shap_values': feature_shap_values,
+            # Optionally save raw SHAP values if needed later, but can be large
+            # 'treated_shap': treated_shap,
+            # 'control_shap': control_shap,
+            # 'uplift_shap': uplift_shap,
+            # 'X_sample': X_sample 
         }
         joblib.dump(checkpoint_data, checkpoint_file)
+        
+        # Generate and save SHAP summary plot for uplift
+        print("Generating SHAP summary plot...")
+        shap_plot = plot_shap_summary(uplift_shap, X_sample, feature_cols, title="Uplift SHAP Summary Plot")
+        shap_plot_path = f'{output_dir}/uplift_shap_summary.png'
+        shap_plot.savefig(shap_plot_path)
+        print(f"SHAP summary plot saved to {shap_plot_path}")
     else:
         print("Step 9: Analyzing feature importance... [SKIPPED]")
         feature_importance = checkpoint_data.get('feature_importance', {})
@@ -182,14 +210,21 @@ def run_pipeline(data_path, output_dir='models', sample_size=1000000, start_step
         feature_shap_values = feature_importance.get('feature_shap_values')
         
         if importance_df is None or feature_shap_values is None:
-            print("Feature importance not found in checkpoint, reanalyzing...")
+            print("Feature importance/SHAP not found in checkpoint, reanalyzing...")
             importance_df = analyze_feature_importance(two_model, X_train, feature_cols)
-            feature_shap_values, _, _, _, _ = shap_analysis(two_model, X_train, feature_cols)
+            feature_shap_values, treated_shap, control_shap, uplift_shap, X_sample = shap_analysis(two_model, X_train, feature_cols)
             checkpoint_data['feature_importance'] = {
                 'importance_df': importance_df,
                 'feature_shap_values': feature_shap_values
             }
             joblib.dump(checkpoint_data, checkpoint_file)
+            
+            # Regenerate and save SHAP summary plot
+            print("Generating SHAP summary plot...")
+            shap_plot = plot_shap_summary(uplift_shap, X_sample, feature_cols, title="Uplift SHAP Summary Plot")
+            shap_plot_path = f'{output_dir}/uplift_shap_summary.png'
+            shap_plot.savefig(shap_plot_path)
+            print(f"SHAP summary plot saved to {shap_plot_path}")
     
     #Step 10: Saving attribution results
     if start_step <= 10:
